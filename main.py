@@ -159,8 +159,10 @@ def get_annotations():
     uids = objaverse.load_uids()
     annotations = objaverse.load_annotations(uids=uids)
 
-    # Log first few annotations for debugging purposes
-    print("First annotation example:", next(iter(annotations.values())))
+    # Log all names for debugging
+    print("Model names in annotations:")
+    for uid, annotation in annotations.items():
+        print(annotation.get('name', 'Unnamed'))  # Log the name of each model
 
     # Filter annotations based on search term and source (Sketchfab)
     def filter_annotations(annotation):
