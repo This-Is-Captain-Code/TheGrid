@@ -167,18 +167,33 @@ def get_annotations():
     limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
     source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
+    # Log search details for debugging
+    print(f"Search term: '{search_term}'")
+    
     # Filter the cached annotations based on search term and source
-    filtered_annotations = {
-        uid: annotation for uid, annotation in cached_annotations.items()
-        if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
-    }
+    filtered_annotations = {}
+    for uid, annotation in cached_annotations.items():
+        name = annotation.get('name', '').lower()
+        source = annotation.get('source', '').lower()
+        
+        # Log each model name and source for debugging
+        print(f"Model: {name}, Source: {source}")
 
-    # Limit the results
-    limited_annotations = dict(list(filtered_annotations.items())[:limit])
+        # Check if the search term is in the name and if the source is Sketchfab
+        if search_term in name and source_filter in source:
+            filtered_annotations[uid] = annotation
+        
+        # Stop filtering if we've reached the limit
+        if len(filtered_annotations) >= limit:
+            break
 
+    # If no annotations are found, log a message
+    if not filtered_annotations:
+        print("No matching annotations found.")
+    
     # Prepare the response with metadata and thumbnails
     response = []
-    for uid, annotation in limited_annotations.items():
+    for uid, annotation in filtered_annotations.items():
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
         thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
 
@@ -196,4 +211,5 @@ def get_annotations():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
 
