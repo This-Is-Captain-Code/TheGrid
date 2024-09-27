@@ -146,6 +146,10 @@ from flask import Flask, jsonify, request, send_file
 import objaverse  # Import objaverse for Objaverse 1 API
 import threading
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)  # Set log level to DEBUG for more detailed output
 
 app = Flask(__name__)
 
@@ -154,60 +158,86 @@ cached_annotations = {}
 
 def cache_all_annotations():
     global cached_annotations
-    uids = objaverse.load_uids()  # Load all UIDs
-    cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
-    print(f"Cached {len(cached_annotations)} annotations.")
+    try:
+        uids = objaverse.load_uids()  # Load all UIDs
+        cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+        logging.info(f"Successfully cached {len(cached_annotations)} annotations.")
+    except Exception as e:
+        logging.error(f"Error while caching annotations: {str(e)}")
 
 # Start a thread to cache annotations when the app starts
 threading.Thread(target=cache_all_annotations).start()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
-    search_term = request.args.get('search', '').lower()
-    limit = int(request.args.get('limit', 10))
-    source_filter = 'sketchfab'
-    
-    filtered_annotations = {
-        uid: annotation for uid, annotation in cached_annotations.items()
-        if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
-    }
-    
-    limited_annotations = dict(list(filtered_annotations.items())[:limit])
-    
-    response = []
-    for uid, annotation in limited_annotations.items():
-        thumbnails = annotation.get('thumbnails', {}).get('images', [])
-        thumbnail_url = thumbnails[0]['url'] if thumbnails else None
-        
-        response.append({
-            'uid': uid,
-            'name': annotation.get('name', 'Unnamed'),
-            'thumbnail': thumbnail_url,
-            'viewerUrl': annotation.get('viewerUrl'),
-            'embedUrl': annotation.get('embedUrl'),
-            'description': annotation.get('description', ''),
-            'source': annotation.get('source'),
-            'fileIdentifier': annotation.get('fileIdentifier'),  # Add fileIdentifier for download
-        })
-    
-    return jsonify(response)
+    try:
+        search_term = request.args.get('search', '').lower()
+        limit = int(request.args.get('limit', 10))
+        source_filter = 'sketchfab'
+
+        # Log the search parameters
+        logging.debug(f"Received search term: {search_term}, limit: {limit}")
+
+        filtered_annotations = {
+            uid: annotation for uid, annotation in cached_annotations.items()
+            if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
+        }
+
+        limited_annotations = dict(list(filtered_annotations.items())[:limit])
+
+        # Log the number of filtered results
+        logging.debug(f"Filtered annotations count: {len(limited_annotations)}")
+
+        response = []
+        for uid, annotation in limited_annotations.items():
+            thumbnails = annotation.get('thumbnails', {}).get('images', [])
+            thumbnail_url = thumbnails[0]['url'] if thumbnails else None
+
+            response.append({
+                'uid': uid,
+                'name': annotation.get('name', 'Unnamed'),
+                'thumbnail': thumbnail_url,
+                'viewerUrl': annotation.get('viewerUrl'),
+                'embedUrl': annotation.get('embedUrl'),
+                'description': annotation.get('description', ''),
+                'source': annotation.get('source'),
+                'fileIdentifier': annotation.get('fileIdentifier'),  # Add fileIdentifier for download
+            })
+
+        return jsonify(response)
+
+    except Exception as e:
+        logging.error(f"Error in get_annotations: {str(e)}")
+        return jsonify({'error': 'Error processing request'}), 500
 
 @app.route('/download_model/<uid>', methods=['GET'])
 def download_model(uid):
-    # Load objects based on UID and download them
-    download_dir = '/tmp/objaverse_models'  # Directory for downloaded models
-    os.makedirs(download_dir, exist_ok=True)  # Ensure the directory exists
+    try:
+        logging.debug(f"Received request to download model with UID: {uid}")
 
-    # Download the object using Objaverse 1's load_objects function
-    objects = objaverse.load_objects(uids=[uid], download_processes=1)
+        # Load objects based on UID and download them
+        download_dir = '/tmp/objaverse_models'  # Directory for downloaded models
+        os.makedirs(download_dir, exist_ok=True)  # Ensure the directory exists
 
-    # Get the local file path of the downloaded model
-    file_path = objects.get(uid)
-    
-    if file_path and os.path.exists(file_path):
-        return send_file(file_path, as_attachment=True)
-    
-    return jsonify({'error': 'Model not found'}), 404
+        # Download the object using Objaverse 1's load_objects function
+        objects = objaverse.load_objects(uids=[uid], download_processes=1)
+
+        # Log the objects dict returned by Objaverse
+        logging.debug(f"Loaded objects: {objects}")
+
+        # Get the local file path of the downloaded model
+        file_path = objects.get(uid)
+
+        if file_path and os.path.exists(file_path):
+            logging.info(f"Successfully found model at {file_path}, preparing to send.")
+            return send_file(file_path, as_attachment=True)
+        else:
+            logging.error(f"Model not found for UID: {uid}")
+            return jsonify({'error': 'Model not found'}), 404
+
+    except Exception as e:
+        logging.error(f"Error in download_model: {str(e)}")
+        return jsonify({'error': 'Error downloading model'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
