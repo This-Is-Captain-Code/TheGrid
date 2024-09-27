@@ -102,42 +102,92 @@
 # if __name__ == '__main__':
 #     app.run(host='0.0.0.0', port=8080)
 
+##the latest working one
+# from flask import Flask, jsonify, request
+# import objaverse.xl as oxl
+# import pandas as pd
+
+# app = Flask(__name__)
+
+# @app.route('/get_annotations', methods=['GET'])
+# def get_annotations():
+#     download_dir = request.args.get('download_dir', "~/.objaverse")
+#     limit = int(request.args.get('limit', 10))  # Default to 10 annotations if limit is not provided
+    
+#     # Get search parameters
+#     search_term = request.args.get('search', '')  # Example search term
+#     file_type = request.args.get('fileType', '')  # Filter by fileType (e.g., 'stl', 'obj')
+#     source = request.args.get('source', '')  # Filter by source (e.g., 'thingiverse', 'sketchfab')
+
+#     # Load annotations
+#     annotations = oxl.get_annotations(download_dir=download_dir)
+    
+#     # Filter based on metadata filename inside the metadata column
+#     if search_term:
+#         annotations = annotations[annotations['metadata'].apply(
+#             lambda meta: isinstance(meta, dict) and search_term.lower() in str(meta.get('fileName', '')).lower()
+#         )]
+    
+#     # Filter by file type and source if provided
+#     if file_type:
+#         annotations = annotations[annotations['fileType'] == file_type]
+#     if source:
+#         annotations = annotations[annotations['source'] == source]
+
+#     # Limit the number of results
+#     limited_annotations = annotations.head(limit)
+
+#     return jsonify(limited_annotations.to_dict(orient='records'))
+
+# if __name__ == '__main__':
+#     app.run(host='0.0.0.0', port=8080)
+
 from flask import Flask, jsonify, request
 import objaverse.xl as oxl
-import pandas as pd
 
 app = Flask(__name__)
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
     download_dir = request.args.get('download_dir', "~/.objaverse")
-    limit = int(request.args.get('limit', 10))  # Default to 10 annotations if limit is not provided
-    
-    # Get search parameters
-    search_term = request.args.get('search', '')  # Example search term
-    file_type = request.args.get('fileType', '')  # Filter by fileType (e.g., 'stl', 'obj')
-    source = request.args.get('source', '')  # Filter by source (e.g., 'thingiverse', 'sketchfab')
+    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
+    search_term = request.args.get('search', '').lower()  # Get the search term
+    source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
     # Load annotations
     annotations = oxl.get_annotations(download_dir=download_dir)
-    
-    # Filter based on metadata filename inside the metadata column
-    if search_term:
-        annotations = annotations[annotations['metadata'].apply(
-            lambda meta: isinstance(meta, dict) and search_term.lower() in str(meta.get('fileName', '')).lower()
-        )]
-    
-    # Filter by file type and source if provided
-    if file_type:
-        annotations = annotations[annotations['fileType'] == file_type]
-    if source:
-        annotations = annotations[annotations['source'] == source]
+
+    # Filter annotations based on search term and source (Sketchfab)
+    def filter_annotations(annotation):
+        if 'source' in annotation and source_filter in annotation.get('source', '').lower():
+            name = annotation.get('name', '').lower()
+            return search_term in name
+        return False
+
+    # Apply filtering
+    filtered_annotations = {uid: annotation for uid, annotation in annotations.items() if filter_annotations(annotation)}
 
     # Limit the number of results
-    limited_annotations = annotations.head(limit)
+    limited_annotations = dict(list(filtered_annotations.items())[:limit])
 
-    return jsonify(limited_annotations.to_dict(orient='records'))
+    # Prepare the response with metadata and thumbnails
+    response = []
+    for uid, annotation in limited_annotations.items():
+        thumbnails = annotation.get('thumbnails', {}).get('images', [])
+        thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
+
+        # Prepare the metadata
+        response.append({
+            'uid': uid,
+            'name': annotation.get('name', 'Unnamed'),
+            'thumbnail': thumbnail_url,
+            'viewerUrl': annotation.get('viewerUrl'),
+            'embedUrl': annotation.get('embedUrl'),
+            'description': annotation.get('description', ''),
+            'source': annotation.get('source')
+        })
+
+    return jsonify(response)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
-
