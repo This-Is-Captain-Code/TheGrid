@@ -143,58 +143,40 @@
 #     app.run(host='0.0.0.0', port=8080)
 
 from flask import Flask, jsonify, request
+from flask_cors import CORS  # Import CORS
 import objaverse
 import threading
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Global variable to store cached annotations
 cached_annotations = {}
 
 def cache_all_annotations():
-    """Load and cache all annotations when the app starts."""
     global cached_annotations
-    uids = objaverse.load_uids()  # Load all UIDs
-    cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+    uids = objaverse.load_uids()
+    cached_annotations = objaverse.load_annotations(uids=uids)
     print(f"Cached {len(cached_annotations)} annotations.")
 
-# Start a thread to cache annotations when the app starts
 threading.Thread(target=cache_all_annotations).start()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
-    search_term = request.args.get('search', '').lower()  # Get the search term
-    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
+    search_term = request.args.get('search', '').lower()
+    limit = int(request.args.get('limit', 10))
 
-    # Log search details for debugging
-    print(f"Search term: '{search_term}'")
-    
-    # Filter the cached annotations based on search term
-    filtered_annotations = {}
-    for uid, annotation in cached_annotations.items():
-        name = annotation.get('name', '').lower()
+    filtered_annotations = {
+        uid: annotation for uid, annotation in cached_annotations.items()
+        if search_term in annotation.get('name', '').lower()
+    }
 
-        # Log each model name for debugging
-        print(f"Model: {name}")
+    limited_annotations = dict(list(filtered_annotations.items())[:limit])
 
-        # Check if the search term is in the name
-        if search_term in name:
-            filtered_annotations[uid] = annotation
-        
-        # Stop filtering if we've reached the limit
-        if len(filtered_annotations) >= limit:
-            break
-
-    # If no annotations are found, log a message
-    if not filtered_annotations:
-        print("No matching annotations found.")
-    
-    # Prepare the response with metadata and thumbnails
     response = []
-    for uid, annotation in filtered_annotations.items():
+    for uid, annotation in limited_annotations.items():
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
-        thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
-
+        thumbnail_url = thumbnails[0]['url'] if thumbnails else None
         response.append({
             'uid': uid,
             'name': annotation.get('name', 'Unnamed'),
@@ -209,6 +191,3 @@ def get_annotations():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
-
-
-
