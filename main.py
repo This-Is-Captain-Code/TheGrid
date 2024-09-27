@@ -144,7 +144,6 @@
 
 from flask import Flask, jsonify, request
 import objaverse
-import pandas as pd
 
 app = Flask(__name__)
 
@@ -155,34 +154,36 @@ def get_annotations():
     search_term = request.args.get('search', '').lower()  # Get the search term
     source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
-    # Load UIDs and annotations
+    # Load UIDs in batches (let's assume 100 UIDs at a time for efficiency)
     uids = objaverse.load_uids()
-    annotations = objaverse.load_annotations(uids=uids)
+    filtered_annotations = {}
 
-    # Log all names for debugging
-    print("Model names in annotations:")
-    for uid, annotation in annotations.items():
-        print(annotation.get('name', 'Unnamed'))  # Log the name of each model
+    batch_size = 100
+    for i in range(0, len(uids), batch_size):
+        batch_uids = uids[i:i + batch_size]
+        annotations = objaverse.load_annotations(uids=batch_uids)
 
-    # Filter annotations based on search term and source (Sketchfab)
-    def filter_annotations(annotation):
-        source = annotation.get('source', '').lower()
-        name = annotation.get('name', '').lower()
-        return search_term in name and source_filter in source
+        # Filter annotations in the current batch
+        for uid, annotation in annotations.items():
+            source = annotation.get('source', '').lower()
+            name = annotation.get('name', '').lower()
 
-    # Apply filtering
-    filtered_annotations = {uid: annotation for uid, annotation in annotations.items() if filter_annotations(annotation)}
+            if search_term in name and source_filter in source:
+                filtered_annotations[uid] = annotation
 
-    # Limit the number of results
-    limited_annotations = dict(list(filtered_annotations.items())[:limit])
+            # If we've reached the limit, stop
+            if len(filtered_annotations) >= limit:
+                break
+
+        if len(filtered_annotations) >= limit:
+            break
 
     # Prepare the response with metadata and thumbnails
     response = []
-    for uid, annotation in limited_annotations.items():
+    for uid, annotation in filtered_annotations.items():
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
         thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
 
-        # Prepare the metadata
         response.append({
             'uid': uid,
             'name': annotation.get('name', 'Unnamed'),
