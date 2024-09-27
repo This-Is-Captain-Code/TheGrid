@@ -123,7 +123,9 @@ def get_annotations():
     
     # Filter based on metadata filename inside the metadata column
     if search_term:
-        annotations = annotations[annotations['metadata'].apply(lambda meta: search_term.lower() in str(meta.get('fileName', '')).lower())]
+        annotations = annotations[annotations['metadata'].apply(
+            lambda meta: isinstance(meta, dict) and search_term.lower() in str(meta.get('fileName', '')).lower()
+        )]
     
     # Filter by file type and source if provided
     if file_type:
@@ -138,3 +140,4 @@ def get_annotations():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
