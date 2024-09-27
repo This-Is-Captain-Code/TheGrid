@@ -165,22 +165,20 @@ threading.Thread(target=cache_all_annotations).start()
 def get_annotations():
     search_term = request.args.get('search', '').lower()  # Get the search term
     limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
-    source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
     # Log search details for debugging
     print(f"Search term: '{search_term}'")
     
-    # Filter the cached annotations based on search term and source
+    # Filter the cached annotations based on search term
     filtered_annotations = {}
     for uid, annotation in cached_annotations.items():
         name = annotation.get('name', '').lower()
-        source = annotation.get('source', '').lower()
-        
-        # Log each model name and source for debugging
-        print(f"Model: {name}, Source: {source}")
 
-        # Check if the search term is in the name and if the source is Sketchfab
-        if search_term in name and source_filter in source:
+        # Log each model name for debugging
+        print(f"Model: {name}")
+
+        # Check if the search term is in the name
+        if search_term in name:
             filtered_annotations[uid] = annotation
         
         # Stop filtering if we've reached the limit
@@ -211,5 +209,6 @@ def get_annotations():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
 
 
