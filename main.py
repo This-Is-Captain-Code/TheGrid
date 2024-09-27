@@ -143,7 +143,8 @@
 #     app.run(host='0.0.0.0', port=8080)
 
 from flask import Flask, jsonify, request
-import objaverse.xl as oxl
+import objaverse
+import pandas as pd
 
 app = Flask(__name__)
 
@@ -154,15 +155,18 @@ def get_annotations():
     search_term = request.args.get('search', '').lower()  # Get the search term
     source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
-    # Load annotations
-    annotations = oxl.get_annotations(download_dir=download_dir)
+    # Load UIDs and annotations
+    uids = objaverse.load_uids()
+    annotations = objaverse.load_annotations(uids=uids)
+
+    # Log first few annotations for debugging purposes
+    print("First annotation example:", next(iter(annotations.values())))
 
     # Filter annotations based on search term and source (Sketchfab)
     def filter_annotations(annotation):
-        if 'source' in annotation and source_filter in annotation.get('source', '').lower():
-            name = annotation.get('name', '').lower()
-            return search_term in name
-        return False
+        source = annotation.get('source', '').lower()
+        name = annotation.get('name', '').lower()
+        return search_term in name and source_filter in source
 
     # Apply filtering
     filtered_annotations = {uid: annotation for uid, annotation in annotations.items() if filter_annotations(annotation)}
