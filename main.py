@@ -143,9 +143,9 @@
 #     app.run(host='0.0.0.0', port=8080)
 
 from flask import Flask, jsonify, request, send_file
-import objaverse.xl as oxl
-import os
+import objaverse  # Import objaverse for Objaverse 1 API
 import threading
+import os
 
 app = Flask(__name__)
 
@@ -194,20 +194,19 @@ def get_annotations():
 
 @app.route('/download_model/<uid>', methods=['GET'])
 def download_model(uid):
-    # Get the fileIdentifier from cached annotations
-    annotation = cached_annotations.get(uid)
-    if annotation:
-        objects_df = oxl.get_annotations()  # Get a DataFrame of all annotations
-        obj_data = objects_df[objects_df['uid'] == uid]  # Filter the specific object
-        download_dir = '/tmp/objaverse_models'  # You can change this to any directory
+    # Load objects based on UID and download them
+    download_dir = '/tmp/objaverse_models'  # Directory for downloaded models
+    os.makedirs(download_dir, exist_ok=True)  # Ensure the directory exists
 
-        # Download the object
-        oxl.download_objects(objects=obj_data, download_dir=download_dir)
+    # Download the object using Objaverse 1's load_objects function
+    objects = objaverse.load_objects(uids=[uid], download_processes=1)
 
-        # Get the path to the file and send it as a downloadable file
-        file_path = os.path.join(download_dir, annotation['fileIdentifier'])
+    # Get the local file path of the downloaded model
+    file_path = objects.get(uid)
+    
+    if file_path and os.path.exists(file_path):
         return send_file(file_path, as_attachment=True)
-
+    
     return jsonify({'error': 'Model not found'}), 404
 
 if __name__ == '__main__':
