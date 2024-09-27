@@ -142,41 +142,42 @@
 # if __name__ == '__main__':
 #     app.run(host='0.0.0.0', port=8080)
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS  # Import CORS
-import objaverse
-import threading
+from flask import Flask, jsonify, request, send_file
+import objaverse.xl as oxl
+import os
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
 
 # Global variable to store cached annotations
 cached_annotations = {}
 
 def cache_all_annotations():
     global cached_annotations
-    uids = objaverse.load_uids()
-    cached_annotations = objaverse.load_annotations(uids=uids)
+    uids = objaverse.load_uids()  # Load all UIDs
+    cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
     print(f"Cached {len(cached_annotations)} annotations.")
 
+# Start a thread to cache annotations when the app starts
 threading.Thread(target=cache_all_annotations).start()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
     search_term = request.args.get('search', '').lower()
     limit = int(request.args.get('limit', 10))
-
+    source_filter = 'sketchfab'
+    
     filtered_annotations = {
         uid: annotation for uid, annotation in cached_annotations.items()
-        if search_term in annotation.get('name', '').lower()
+        if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
     }
-
+    
     limited_annotations = dict(list(filtered_annotations.items())[:limit])
-
+    
     response = []
     for uid, annotation in limited_annotations.items():
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
         thumbnail_url = thumbnails[0]['url'] if thumbnails else None
+        
         response.append({
             'uid': uid,
             'name': annotation.get('name', 'Unnamed'),
@@ -184,10 +185,29 @@ def get_annotations():
             'viewerUrl': annotation.get('viewerUrl'),
             'embedUrl': annotation.get('embedUrl'),
             'description': annotation.get('description', ''),
-            'source': annotation.get('source')
+            'source': annotation.get('source'),
+            'fileIdentifier': annotation.get('fileIdentifier'),  # Add fileIdentifier for download
         })
-
+    
     return jsonify(response)
+
+@app.route('/download_model/<uid>', methods=['GET'])
+def download_model(uid):
+    # Get the fileIdentifier from cached annotations
+    annotation = cached_annotations.get(uid)
+    if annotation:
+        objects_df = oxl.get_annotations()  # Get a DataFrame of all annotations
+        obj_data = objects_df[objects_df['uid'] == uid]  # Filter the specific object
+        download_dir = '/tmp/objaverse_models'  # You can change this to any directory
+
+        # Download the object
+        oxl.download_objects(objects=obj_data, download_dir=download_dir)
+
+        # Get the path to the file and send it as a downloadable file
+        file_path = os.path.join(download_dir, annotation['fileIdentifier'])
+        return send_file(file_path, as_attachment=True)
+
+    return jsonify({'error': 'Model not found'}), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
