@@ -144,43 +144,41 @@
 
 from flask import Flask, jsonify, request
 import objaverse
+import threading
 
 app = Flask(__name__)
 
+# Global variable to store cached annotations
+cached_annotations = {}
+
+def cache_all_annotations():
+    """Load and cache all annotations when the app starts."""
+    global cached_annotations
+    uids = objaverse.load_uids()  # Load all UIDs
+    cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+    print(f"Cached {len(cached_annotations)} annotations.")
+
+# Start a thread to cache annotations when the app starts
+threading.Thread(target=cache_all_annotations).start()
+
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
-    download_dir = request.args.get('download_dir', "~/.objaverse")
-    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
     search_term = request.args.get('search', '').lower()  # Get the search term
+    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
     source_filter = 'sketchfab'  # Limit the source to Sketchfab
 
-    # Load UIDs in batches (let's assume 100 UIDs at a time for efficiency)
-    uids = objaverse.load_uids()
-    filtered_annotations = {}
+    # Filter the cached annotations based on search term and source
+    filtered_annotations = {
+        uid: annotation for uid, annotation in cached_annotations.items()
+        if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
+    }
 
-    batch_size = 100
-    for i in range(0, len(uids), batch_size):
-        batch_uids = uids[i:i + batch_size]
-        annotations = objaverse.load_annotations(uids=batch_uids)
-
-        # Filter annotations in the current batch
-        for uid, annotation in annotations.items():
-            source = annotation.get('source', '').lower()
-            name = annotation.get('name', '').lower()
-
-            if search_term in name and source_filter in source:
-                filtered_annotations[uid] = annotation
-
-            # If we've reached the limit, stop
-            if len(filtered_annotations) >= limit:
-                break
-
-        if len(filtered_annotations) >= limit:
-            break
+    # Limit the results
+    limited_annotations = dict(list(filtered_annotations.items())[:limit])
 
     # Prepare the response with metadata and thumbnails
     response = []
-    for uid, annotation in filtered_annotations.items():
+    for uid, annotation in limited_annotations.items():
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
         thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
 
@@ -198,3 +196,4 @@ def get_annotations():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
