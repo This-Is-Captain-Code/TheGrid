@@ -145,6 +145,7 @@
 from flask import Flask, jsonify, request, send_file
 import objaverse.xl as oxl
 import os
+import threading
 
 app = Flask(__name__)
 
