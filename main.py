@@ -293,19 +293,28 @@ import os
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)  # Set log level to DEBUG for more detailed output
+logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concise output
 
 app = Flask(__name__)
 
-# Global variable to store cached annotations
+# Global variable to store cached annotations and index
 cached_annotations = {}
+name_index = {}
 
 def cache_all_annotations():
     """Load and cache all annotations when the app starts."""
-    global cached_annotations
+    global cached_annotations, name_index
     try:
         uids = objaverse.load_uids()  # Load all UIDs
         cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+        # Build an index for names to make search faster
+        for uid, annotation in cached_annotations.items():
+            name = annotation.get('name', '').lower()
+            if name:
+                if name in name_index:
+                    name_index[name].append(uid)
+                else:
+                    name_index[name] = [uid]
         logging.info(f"Cached {len(cached_annotations)} annotations.")
     except Exception as e:
         logging.error(f"Error while caching annotations: {str(e)}")
@@ -318,32 +327,18 @@ def get_annotations():
     search_term = request.args.get('search', '').lower()  # Get the search term
     limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
 
-    # Log search details for debugging
-    logging.debug(f"Search term: '{search_term}'")
-    
-    # Filter the cached annotations based on search term
-    filtered_annotations = {}
-    for uid, annotation in cached_annotations.items():
-        name = annotation.get('name', '').lower()
-
-        # Log each model name for debugging
-        logging.debug(f"Model: {name}")
-
-        # Check if the search term is in the name
+    # Direct lookup in the name index
+    matched_uids = []
+    for name, uids in name_index.items():
         if search_term in name:
-            filtered_annotations[uid] = annotation
-        
-        # Stop filtering if we've reached the limit
-        if len(filtered_annotations) >= limit:
+            matched_uids.extend(uids)
+        if len(matched_uids) >= limit:
             break
 
-    # If no annotations are found, log a message
-    if not filtered_annotations:
-        logging.debug("No matching annotations found.")
-    
     # Prepare the response with metadata and thumbnails
     response = []
-    for uid, annotation in filtered_annotations.items():
+    for uid in matched_uids[:limit]:
+        annotation = cached_annotations[uid]
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
         thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
 
