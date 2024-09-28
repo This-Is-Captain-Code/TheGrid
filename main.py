@@ -286,9 +286,14 @@
 # if __name__ == '__main__':
 #     app.run(host='0.0.0.0', port=8080)
 
-from flask import Flask, jsonify, request
-import objaverse
+from flask import Flask, jsonify, request, send_file
+import objaverse  # Import objaverse for Objaverse API
 import threading
+import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)  # Set log level to DEBUG for more detailed output
 
 app = Flask(__name__)
 
@@ -298,9 +303,12 @@ cached_annotations = {}
 def cache_all_annotations():
     """Load and cache all annotations when the app starts."""
     global cached_annotations
-    uids = objaverse.load_uids()  # Load all UIDs
-    cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
-    print(f"Cached {len(cached_annotations)} annotations.")
+    try:
+        uids = objaverse.load_uids()  # Load all UIDs
+        cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+        logging.info(f"Cached {len(cached_annotations)} annotations.")
+    except Exception as e:
+        logging.error(f"Error while caching annotations: {str(e)}")
 
 # Start a thread to cache annotations when the app starts
 threading.Thread(target=cache_all_annotations).start()
@@ -311,7 +319,7 @@ def get_annotations():
     limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
 
     # Log search details for debugging
-    print(f"Search term: '{search_term}'")
+    logging.debug(f"Search term: '{search_term}'")
     
     # Filter the cached annotations based on search term
     filtered_annotations = {}
@@ -319,7 +327,7 @@ def get_annotations():
         name = annotation.get('name', '').lower()
 
         # Log each model name for debugging
-        print(f"Model: {name}")
+        logging.debug(f"Model: {name}")
 
         # Check if the search term is in the name
         if search_term in name:
@@ -331,7 +339,7 @@ def get_annotations():
 
     # If no annotations are found, log a message
     if not filtered_annotations:
-        print("No matching annotations found.")
+        logging.debug("No matching annotations found.")
     
     # Prepare the response with metadata and thumbnails
     response = []
@@ -350,6 +358,36 @@ def get_annotations():
         })
 
     return jsonify(response)
+
+@app.route('/download_model/<uid>', methods=['GET'])
+def download_model(uid):
+    """Download the 3D model based on its UID."""
+    try:
+        logging.debug(f"Received request to download model with UID: {uid}")
+
+        # Load objects based on UID and download them
+        download_dir = '/tmp/objaverse_models'  # Directory for downloaded models
+        os.makedirs(download_dir, exist_ok=True)  # Ensure the directory exists
+
+        # Download the object using Objaverse's load_objects function
+        objects = objaverse.load_objects(uids=[uid], download_processes=1)
+
+        # Log the objects dict returned by Objaverse
+        logging.debug(f"Loaded objects: {objects}")
+
+        # Get the local file path of the downloaded model
+        file_path = objects.get(uid)
+
+        if file_path and os.path.exists(file_path):
+            logging.info(f"Successfully found model at {file_path}, preparing to send.")
+            return send_file(file_path, as_attachment=True)
+        else:
+            logging.error(f"Model not found for UID: {uid}")
+            return jsonify({'error': 'Model not found'}), 404
+
+    except Exception as e:
+        logging.error(f"Error in download_model: {str(e)}")
+        return jsonify({'error': 'Error downloading model'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
