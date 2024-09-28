@@ -183,6 +183,11 @@ def get_annotations():
             logging.error("Annotations are not loaded.")
             return jsonify({'error': 'Annotations not loaded yet.'}), 500
 
+        # Log a sample of annotations for debugging
+        sample_annotations = list(cached_annotations.items())[:5]  # Get first 5 annotations for inspection
+        for uid, annotation in sample_annotations:
+            logging.debug(f"Sample annotation: {uid} -> {annotation}")
+
         # Filter annotations ensuring both 'name' and 'source' fields exist
         filtered_annotations = {
             uid: annotation for uid, annotation in cached_annotations.items()
