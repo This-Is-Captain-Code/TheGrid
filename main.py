@@ -291,11 +291,13 @@ import objaverse  # Import objaverse for Objaverse API
 import threading
 import os
 import logging
+from flask_cors import CORS  # Import CORS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concise output
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 # Global variable to store cached annotations and index
 cached_annotations = {}
