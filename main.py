@@ -178,15 +178,22 @@ def get_annotations():
         # Log the search parameters
         logging.debug(f"Received search term: {search_term}, limit: {limit}")
 
+        # Ensure annotations are loaded
+        if not cached_annotations:
+            logging.error("Annotations are not loaded.")
+            return jsonify({'error': 'Annotations not loaded yet.'}), 500
+
+        # Filter annotations ensuring both 'name' and 'source' fields exist
         filtered_annotations = {
             uid: annotation for uid, annotation in cached_annotations.items()
-            if search_term in annotation.get('name', '').lower() and source_filter in annotation.get('source', '').lower()
+            if 'name' in annotation and search_term in annotation['name'].lower()
+            and 'source' in annotation and source_filter in annotation['source'].lower()
         }
 
-        limited_annotations = dict(list(filtered_annotations.items())[:limit])
+        # Log the filtered results
+        logging.debug(f"Filtered annotations count: {len(filtered_annotations)}")
 
-        # Log the number of filtered results
-        logging.debug(f"Filtered annotations count: {len(limited_annotations)}")
+        limited_annotations = dict(list(filtered_annotations.items())[:limit])
 
         response = []
         for uid, annotation in limited_annotations.items():
@@ -201,7 +208,7 @@ def get_annotations():
                 'embedUrl': annotation.get('embedUrl'),
                 'description': annotation.get('description', ''),
                 'source': annotation.get('source'),
-                'fileIdentifier': annotation.get('fileIdentifier'),  # Add fileIdentifier for download
+                'fileIdentifier': annotation.get('fileIdentifier'),
             })
 
         return jsonify(response)
