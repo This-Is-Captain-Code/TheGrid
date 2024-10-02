@@ -434,19 +434,30 @@ def get_annotations():
     search_term = request.args.get('search', '').lower()  # Get the search term
     limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
     page = int(request.args.get('page', 1))  # Default to page 1
-    source = request.args.get('source', '').lower()  # Optional source filter
+    global_source = request.args.get('global_source', '').lower()  # Filter for global source (e.g., sketchfab)
+    sketchfab_metadata = request.args.get('sketchfab_metadata', '').lower()  # Optional metadata filter within Sketchfab
 
     # Calculate the offset
     offset = (page - 1) * limit
 
-    # Filter by source if provided
+    # Global source filtering and search logic
     matched_uids = []
     for name, uids in name_index.items():
         if search_term in name:
             for uid in uids:
                 annotation = cached_annotations.get(uid)
-                if source and annotation.get('source', '').lower() != source:
-                    continue  # Skip if the source doesn't match
+
+                # Global source filtering (e.g., sketchfab, thingiverse, etc.)
+                if global_source and annotation.get('source', '').lower() != global_source:
+                    continue  # Skip if the global source doesn't match
+
+                # Sketchfab metadata filtering (e.g., tags/categories within Sketchfab)
+                if global_source == 'sketchfab' and sketchfab_metadata:
+                    tags = annotation.get('tags', [])
+                    tag_names = [tag.get('name', '').lower() for tag in tags]
+                    if sketchfab_metadata not in tag_names:
+                        continue  # Skip if the specific metadata within Sketchfab doesn't match
+
                 matched_uids.append(uid)
 
         if len(matched_uids) >= limit + offset:
@@ -469,7 +480,8 @@ def get_annotations():
             'viewerUrl': annotation.get('viewerUrl'),
             'embedUrl': annotation.get('embedUrl'),
             'description': annotation.get('description', ''),
-            'source': annotation.get('source')
+            'source': annotation.get('source'),
+            'tags': annotation.get('tags', [])  # Include tags for frontend filtering
         })
 
     return jsonify({
@@ -478,7 +490,6 @@ def get_annotations():
         'total': len(matched_uids),
         'hasMore': len(matched_uids) > offset + limit
     })
-
 
 @app.route('/download_model/<uid>', methods=['GET'])
 def download_model(uid):
