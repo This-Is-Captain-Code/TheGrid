@@ -392,7 +392,7 @@
 #     app.run(host='0.0.0.0', port=8080)
 
 from flask import Flask, jsonify, request, send_file
-import objaverse  # Import objaverse for Objaverse API
+import objaverse.xl as oxl  # Using Objaverse-XL for annotations from multiple sources
 import threading
 import os
 import logging
@@ -412,8 +412,9 @@ def cache_all_annotations():
     """Load and cache all annotations when the app starts."""
     global cached_annotations, name_index
     try:
-        uids = objaverse.load_uids()  # Load all UIDs
-        cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
+        # Load annotations from all sources (Objaverse-XL)
+        cached_annotations = oxl.get_annotations().to_dict(orient='index')
+        
         # Build an index for names to make search faster
         for uid, annotation in cached_annotations.items():
             name = annotation.get('name', '').lower()
@@ -431,42 +432,35 @@ threading.Thread(target=cache_all_annotations).start()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
-    search_term = request.args.get('search', '').lower()  # Search term
-    limit = int(request.args.get('limit', 10))  # Limit per page
-    page = int(request.args.get('page', 1))  # Page number
-    global_source = request.args.get('global_source', '').lower()  # Source filter
-    sketchfab_metadata = request.args.get('sketchfab_metadata', '').lower()  # Metadata filter for Sketchfab
+    search_term = request.args.get('search', '').lower()  # Get the search term
+    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
+    global_source = request.args.get('global_source', '').lower()  # Get global source filter
+    sketchfab_metadata = request.args.get('sketchfab_metadata', '').lower()  # Get Sketchfab-specific metadata filter
 
-    offset = (page - 1) * limit
+    # Direct lookup in the name index
     matched_uids = []
-
-    # Apply search term and source filtering
-    for uid, annotation in cached_annotations.items():
-        name = annotation.get('name', '').lower()
-        source = annotation.get('source', '').lower()
-
-        # Apply global source filtering
-        if global_source and source != global_source:
-            continue
-
-        # Sketchfab metadata filtering (applies only if source is Sketchfab)
-        if source == 'sketchfab' and sketchfab_metadata:
-            tags = [tag['name'].lower() for tag in annotation.get('tags', [])]
-            if sketchfab_metadata not in tags:
-                continue
-
-        # Match by search term
+    for name, uids in name_index.items():
         if search_term in name:
-            matched_uids.append(uid)
+            for uid in uids:
+                annotation = cached_annotations[uid]
+                # Filter based on global source
+                if global_source and annotation['source'].lower() != global_source:
+                    continue
+                matched_uids.append(uid)
+            if len(matched_uids) >= limit:
+                break
 
-    # Paginate results
-    paginated_uids = matched_uids[offset:offset + limit]
+    # Sketchfab metadata filtering
+    if global_source == 'sketchfab' and sketchfab_metadata:
+        matched_uids = [uid for uid in matched_uids if sketchfab_metadata in 
+                        [tag['name'].lower() for tag in cached_annotations[uid].get('tags', [])]]
 
+    # Prepare the response with metadata and thumbnails
     response = []
-    for uid in paginated_uids:
+    for uid in matched_uids[:limit]:
         annotation = cached_annotations[uid]
         thumbnails = annotation.get('thumbnails', {}).get('images', [])
-        thumbnail_url = thumbnails[0]['url'] if thumbnails else None
+        thumbnail_url = thumbnails[0]['url'] if thumbnails else None  # Get the first thumbnail if available
 
         response.append({
             'uid': uid,
@@ -478,12 +472,7 @@ def get_annotations():
             'source': annotation.get('source')
         })
 
-    return jsonify({
-        'results': response,
-        'page': page,
-        'total': len(matched_uids),
-        'hasMore': len(matched_uids) > offset + limit
-    })
+    return jsonify(response)
 
 @app.route('/download_model/<uid>', methods=['GET'])
 def download_model(uid):
@@ -496,10 +485,7 @@ def download_model(uid):
         os.makedirs(download_dir, exist_ok=True)  # Ensure the directory exists
 
         # Download the object using Objaverse's load_objects function
-        objects = objaverse.load_objects(uids=[uid], download_processes=1)
-
-        # Log the objects dict returned by Objaverse
-        logging.debug(f"Loaded objects: {objects}")
+        objects = oxl.download_objects(uids=[uid], download_dir=download_dir)
 
         # Get the local file path of the downloaded model
         file_path = objects.get(uid)
