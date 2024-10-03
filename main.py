@@ -431,27 +431,26 @@ threading.Thread(target=cache_all_annotations).start()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
-    search_term = request.args.get('search', '').lower()  # Get the search term
-    limit = int(request.args.get('limit', 10))  # Default to 10 results if limit is not provided
-    page = int(request.args.get('page', 1))  # Default to page 1
-    global_source = request.args.get('global_source', '').lower()  # Filter for global source (e.g., sketchfab, github)
-    sketchfab_metadata = request.args.get('sketchfab_metadata', '').lower()  # Optional metadata filter for Sketchfab
+    search_term = request.args.get('search', '').lower()  # Search term
+    limit = int(request.args.get('limit', 10))  # Limit per page
+    page = int(request.args.get('page', 1))  # Page number
+    global_source = request.args.get('global_source', '').lower()  # Source filter
+    sketchfab_metadata = request.args.get('sketchfab_metadata', '').lower()  # Metadata filter for Sketchfab
 
-    # Calculate the offset
     offset = (page - 1) * limit
-
     matched_uids = []
 
     # Apply search term and source filtering
     for uid, annotation in cached_annotations.items():
         name = annotation.get('name', '').lower()
+        source = annotation.get('source', '').lower()
 
-        # Global source filtering
-        if global_source and annotation.get('source', '').lower() != global_source:
+        # Apply global source filtering
+        if global_source and source != global_source:
             continue
 
-        # Metadata filtering for Sketchfab (when applicable)
-        if global_source == 'sketchfab' and sketchfab_metadata:
+        # Sketchfab metadata filtering (applies only if source is Sketchfab)
+        if source == 'sketchfab' and sketchfab_metadata:
             tags = [tag['name'].lower() for tag in annotation.get('tags', [])]
             if sketchfab_metadata not in tags:
                 continue
@@ -463,7 +462,6 @@ def get_annotations():
     # Paginate results
     paginated_uids = matched_uids[offset:offset + limit]
 
-    # Prepare the response
     response = []
     for uid in paginated_uids:
         annotation = cached_annotations[uid]
