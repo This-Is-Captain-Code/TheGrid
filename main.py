@@ -518,7 +518,6 @@
 
 from flask import Flask, jsonify, request, send_file
 import objaverse  # Import objaverse for Objaverse API
-import threading
 import os
 import logging
 from flask_cors import CORS  # Import CORS
@@ -528,16 +527,11 @@ import requests
 logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concise output
 
 app = Flask(__name__)
-from flask_cors import CORS
-
-# Initialize Flask app
-app = Flask(__name__)
 
 # Configure CORS for all routes
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-
-# Global variable to store cached annotations and index
+# Global variables to store cached annotations and index
 cached_annotations = {}
 name_index = {}
 
@@ -545,6 +539,7 @@ def cache_all_annotations():
     """Load and cache all annotations when the app starts."""
     global cached_annotations, name_index
     try:
+        logging.info("Starting to cache annotations...")
         uids = objaverse.load_uids()  # Load all UIDs
         cached_annotations = objaverse.load_annotations(uids=uids)  # Load all annotations
         # Build an index for names to make search faster
@@ -558,9 +553,11 @@ def cache_all_annotations():
         logging.info(f"Cached {len(cached_annotations)} annotations.")
     except Exception as e:
         logging.error(f"Error while caching annotations: {str(e)}")
+        # Exit the application if caching fails
+        os._exit(1)
 
-# Start a thread to cache annotations when the app starts
-threading.Thread(target=cache_all_annotations).start()
+# Load cache synchronously before starting the server
+cache_all_annotations()
 
 @app.route('/get_annotations', methods=['GET'])
 def get_annotations():
@@ -612,7 +609,6 @@ def get_annotations():
         'hasMore': len(matched_uids) > offset + limit
     })
 
-
 @app.route('/download_model/<uid>', methods=['GET'])
 def download_model(uid):
     """Download the 3D model based on its UID."""
@@ -647,14 +643,29 @@ def download_model(uid):
 @app.route('/mint_nft', methods=['POST'])
 def mint_nft():
     try:
-        data = request.json
-        uid = data['uid']
-        wallet_address = data['wallet']  # User's wallet address from the frontend
+        data = request.get_json()
+        logging.info(f"Received /mint_nft request with data: {data}")
+
+        if not data:
+            logging.error("No JSON data received.")
+            return jsonify({'error': "No JSON data received."}), 400
+
+        uid = data.get('uid')
+        wallet_address = data.get('wallet')  # User's wallet address from the frontend
+
+        if not uid or not wallet_address:
+            logging.error("Missing 'uid' or 'wallet' in request data.")
+            return jsonify({'error': "Missing 'uid' or 'wallet' in request data."}), 400
 
         # Fetch metadata from cached annotations
         annotation = cached_annotations.get(uid)
+        if not annotation:
+            logging.error(f"UID {uid} not found in cached annotations.")
+            return jsonify({'error': 'UID not found.'}), 404
+
         name = annotation.get('name', 'Unnamed')
-        thumbnail_url = annotation.get('thumbnails', {}).get('images', [{}])[0].get('url')
+        thumbnails = annotation.get('thumbnails', {}).get('images', [])
+        thumbnail_url = thumbnails[0].get('url') if thumbnails else None
         download_link = f"http://{request.host}/download_model/{uid}"
 
         # Metadata for the NFT
@@ -665,13 +676,17 @@ def mint_nft():
             "download_link": download_link
         }
 
-        # (Optional) Use Metaplex API for minting, or return metadata for frontend to handle minting
+        # (Optional) Integrate with an NFT minting service or blockchain here
+        # For example, using Metaplex API or another service to mint the NFT
 
         # Example: Return metadata for frontend to handle minting
+        logging.info("Minting process initiated successfully.")
         return jsonify({'metadata': metadata, 'message': 'Minting process initiated.'})
+
     except Exception as e:
         logging.error(f"Error minting NFT: {str(e)}")
         return jsonify({'error': 'Error minting NFT'}), 500
 
 if __name__ == '__main__':
+    # It's recommended to use a production-ready server like Gunicorn for deployment
     app.run(host='0.0.0.0', port=8080)
