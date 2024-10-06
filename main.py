@@ -528,7 +528,14 @@ import requests
 logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concise output
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+from flask_cors import CORS
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Configure CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}})
+
 
 # Global variable to store cached annotations and index
 cached_annotations = {}
