@@ -526,7 +526,7 @@ import requests
 # Configure logging
 logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concise output
 
-app = Flask(__name__)
+app = Flask(__name__) 
 
 # Configure CORS for all routes
 CORS(app, resources={r"/*": {"origins": "*"}})
