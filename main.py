@@ -529,7 +529,7 @@ logging.basicConfig(level=logging.INFO)  # Set log level to INFO for more concis
 app = Flask(__name__) 
 
 # Configure CORS for all routes
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {"origins": ["https://the-grid-webapp.vercel.app", "*"]}})
 
 # Global variables to store cached annotations and index
 cached_annotations = {}
